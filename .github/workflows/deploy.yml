@@ -21,9 +21,24 @@ jobs:
  
     - name: Deploy via SSH
       run: |
-        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+          export NVM_DIR="\$HOME/.nvm"
+          [ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"
+          nvm use default > /dev/null
+          export PATH="\$NVM_DIR/versions/node/\$(nvm version)/bin:\$PATH"
+ 
           cd ${{ secrets.APP_DIR }}
+ 
           git pull origin master
           npm install
-          pm2 restart react-app || pm2 start index.js --name react-app
+          npm run build
+ 
+          # Install serve globally if not present
+          command -v serve >/dev/null 2>&1 || npm install -g serve
+ 
+          # Kill any running serve process (optional cleanup)
+          pkill -f "serve -s build" || true
+ 
+          # Start serve in background with nohup
+          nohup serve -s build --listen 3000 > out.log 2>&1 &
         EOF
