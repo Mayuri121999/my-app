@@ -10,7 +10,7 @@ pipeline {
     environment {
         SSH_KEY_ID = 'ec2-ssh-key' // Jenkins SSH credential ID
         REMOTE_USER = 'ubuntu'
-        REMOTE_HOST = '13.53.126.9'
+        REMOTE_HOST = '51.20.181.213'
         REMOTE_DIR = '/home/ubuntu/my_app'
         PORT = '3000'
     }
