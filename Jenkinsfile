@@ -37,9 +37,9 @@ pipeline {
                 echo "In Build Stage"
                 bat '''
                     npm install
-                    echo "After Install"
+                    "echo After Install"
                     npm run build
-                    echo "After build"
+                    "echo After build"
                 '''
             }
         }
