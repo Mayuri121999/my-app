@@ -15,6 +15,10 @@ pipeline {
         PORT = '3000'
     }
 
+    tools {
+    nodejs 'node-version' // Match the name you configured
+}
+
     stages {
         stage('Checkout') {
             steps {
