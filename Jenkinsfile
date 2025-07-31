@@ -34,9 +34,12 @@ pipeline {
 
         stage('Build') {
             steps {
+                echo "In Build Stage"
                 sh '''
                     npm install
+                    echo "After Install"
                     npm run build
+                    echo "After build"
                 '''
             }
         }
