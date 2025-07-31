@@ -48,7 +48,7 @@ pipeline {
             steps {
                 sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
                     sh """
-                        scp -o StrictHostKeyChecking=no -r ./ ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION}
+                        scp -o StrictHostKeyChecking=no -r ./ ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION} "echo Connected to EC2"
                         ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}
                     """
                 }
