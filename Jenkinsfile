@@ -46,11 +46,34 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
-                    sh """
-                        scp -o StrictHostKeyChecking=no -r ./ ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION} "echo Connected to EC2"
-                        ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}
+                // sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
+                //     sh """
+                //         scp -o StrictHostKeyChecking=no -r ./ ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION} "echo Connected to EC2"
+                //         ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}
+                //     """
+                // }
+
+
+                withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
+                    bat """
+                        echo Using key: %KEYFILE%
+
+                        REM Remove inheritance for strict permissions
+                        icacls "%KEYFILE%" /inheritance:r
+
+                        REM Grant Full Control to SYSTEM (adjust if your agent runs as a different user!)
+                        icacls "%KEYFILE%" /grant:r "SYSTEM:F"
+
+                        REM Verify file exists
+                        dir "%KEYFILE%"
+
+                        REM Copy the index.html
+                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" index.html ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/
+
+                        REM Move to /var/www/html
+                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "sudo mv ${env.REMOTE_DIR}/build/index.html /var/www/html/index.html"
                     """
+                
                 }
             }
         }
