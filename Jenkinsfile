@@ -101,39 +101,14 @@ pipeline {
                             exit /b 1
                         )
 
-                        REM prepare temp deploy directory on remote
+                        REM create temp directory on remote
                         ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
 
-                        REM copy new build to remote temp location
+                        REM copy new build to remote temp
                         scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
 
-                        REM perform atomic swap on remote: backup current, replace, reload nginx
-                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} bash -s <<'ENDSSH'
-                            set -e
-                            TIMESTAMP=$(date +%Y%m%d%H%M%S)
-                            NGINX_ROOT=/var/www/html
-                            BACKUP_DIR=/home/${env.REMOTE_USER}/backup_$TIMESTAMP
-
-                            echo "Backing up existing content..."
-                            if [ -d "$NGINX_ROOT" ]; then
-                                sudo cp -r "$NGINX_ROOT" "$BACKUP_DIR"
-                            fi
-
-                            echo "Clearing Nginx root..."
-                            sudo rm -rf "$NGINX_ROOT"/*
-
-                            echo "Copying new build into place..."
-                            sudo cp -r /home/${env.REMOTE_USER}/deploy_tmp/* "$NGINX_ROOT"/
-
-                            echo "Setting permissions..."
-                            sudo chown -R www-data:www-data "$NGINX_ROOT"
-
-                            echo "Reloading Nginx..."
-                            sudo systemctl reload nginx
-
-                            echo "Cleanup temp build"
-                            rm -rf /home/${env.REMOTE_USER}/deploy_tmp/*
-                        ENDSSH
+                        REM run the remote deploy script
+                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "bash /home/ubuntu/deploy_simple.sh"
                     """
                 }
             }
