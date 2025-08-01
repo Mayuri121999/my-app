@@ -1,27 +1,26 @@
 #!/bin/bash
+set -e
 
 ENV=$1
 VERSION=$2
 
-APP_DIR="/home/ubuntu/my_app"
-RELEASE_DIR="$APP_DIR/releases/$VERSION"
-CURRENT_DIR="$APP_DIR/current"
-BACKUP_DIR="$APP_DIR/backup_$(date +%Y%m%d%H%M%S)"
+NGINX_ROOT=/var/www/html
+BACKUP_DIR=/home/ubuntu/backup_$(date +%Y%m%d%H%M%S)
+TMP_DIR=/home/ubuntu/deploy_tmp
 
-echo "Deploying version $VERSION to $ENV environment..."
-
-# Backup current version
-if [ -d "$CURRENT_DIR" ]; then
-    cp -r "$CURRENT_DIR" "$BACKUP_DIR"
-    echo "Backup created at $BACKUP_DIR"
+echo "Backing up existing site..."
+if [ -d "$NGINX_ROOT" ]; then
+  sudo cp -r "$NGINX_ROOT" "$BACKUP_DIR"
 fi
 
-# Update current version
-rm -rf "$CURRENT_DIR"
-cp -r "$RELEASE_DIR" "$CURRENT_DIR"
+echo "Deploying new build..."
+sudo rm -rf "$NGINX_ROOT"/*
+sudo cp -r "$TMP_DIR"/* "$NGINX_ROOT"/
 
-# Restart application (adjust based on your app)
-cd "$CURRENT_DIR"
-pm2 restart app || pm2 start app.js || npm start &
+echo "Fixing ownership..."
+sudo chown -R www-data:www-data "$NGINX_ROOT"
 
-echo "Deployment of version $VERSION completed."
+echo "Reloading Nginx..."
+sudo systemctl reload nginx
+
+echo "Deployment complete. (ENV=$ENV, VERSION=$VERSION)"

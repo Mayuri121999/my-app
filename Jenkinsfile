@@ -16,8 +16,8 @@ pipeline {
     }
 
     tools {
-    nodejs 'node-version' // Match the name you configured
-}
+     nodejs 'node-version' // Match the name you configured
+    }
 
     stages {
         stage('Checkout') {
@@ -56,58 +56,36 @@ pipeline {
         }
 
 
-        // stage('Deploy') {
-        //     steps {
-        //         // sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
-        //         //     sh """
-        //         //         scp -o StrictHostKeyChecking=no -r ./ ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION} "echo Connected to EC2"
-        //         //         ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}
-        //         //     """
-        //         // }
+        stage('Deploy') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
+                    bat """
+                        echo Using key: %KEYFILE%
 
+                        REM tighten key permissions so OpenSSH will accept it
+                        for /f "tokens=*" %%u in ('whoami') do set CURUSER=%%u
+                        icacls "%KEYFILE%" /inheritance:r
+                        icacls "%KEYFILE%" /grant:r "%CURUSER%:R"
+                        icacls "%KEYFILE%" /grant:r "NT AUTHORITY\\SYSTEM:F"
 
-        //         withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
-        //             bat """
-        //                 echo Using key: %KEYFILE%
+                        REM ensure build exists
+                        if not exist build\\index.html (
+                            echo Build output missing; aborting.
+                            exit /b 1
+                        )
 
-        //                 REM Remove inheritance for strict permissions
-        //                 icacls "%KEYFILE%" /inheritance:r
+                        REM prepare remote temp dir
+                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
 
-        //                 REM Grant Full Control to SYSTEM (adjust if your agent runs as a different user!)
-        //                 icacls "%KEYFILE%" /grant:r "SYSTEM:F"
+                        REM copy build to remote temp
+                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
 
-        //                 REM Verify file exists
-        //                 dir "%KEYFILE%"
-
-        //                 REM Copy the index.html
-        //                 scp -o StrictHostKeyChecking=no -i "%KEYFILE%" index.html ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/
-
-        //                 REM Move to /var/www/html
-        //                 ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "sudo mv ${env.REMOTE_DIR}/build/index.html /var/www/html/index.html"
-        //             """
-                
-        //         }
-        //     }
-        // }
-        
-        // stage('Deploy') {
-        //     steps {
-        //         withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
-        //             bat """
-        //                 echo Using key: %KEYFILE%
-
-        //                 REM create temp directory on remote
-        //                 ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
-
-        //                 REM copy new build to remote temp
-        //                 scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
-
-        //                 REM run the remote deploy script
-        //                 ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "bash /home/ubuntu/deploy_simple.sh"
-        //             """
-        //         }
-        //     }
-        // }
+                        REM invoke remote deploy script
+                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "bash /home/ubuntu/deploy_simple.sh"
+                    """
+                }
+            }
+        }
 
 
 
@@ -128,9 +106,9 @@ pipeline {
     post {
         failure {
             echo "Deployment failed. Rolling back..."
-            sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
-                sh "ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/rollback.sh ${params.ENV}"
-            }
+            // sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
+            //     sh "ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/rollback.sh ${params.ENV}"
+            // }
         }
     }
 }
