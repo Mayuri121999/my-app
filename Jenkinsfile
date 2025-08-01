@@ -45,33 +45,15 @@ pipeline {
         // }
 
         stage('Build') {
-    steps {
-        echo "In Build Stage"
-        bat '''
-            REM locate package.json
-            if exist package.json (
-                echo Building from repo root
-            ) else if exist my-app\\package.json (
-                echo Building from my-app subfolder
-                cd my-app
-            ) else (
-                echo package.json not found, aborting.
-                exit /b 1
-            )
-
-            REM ensure node is present
-            node -v || (
-                echo Node.js is missing; aborting.
-                exit /b 1
-            )
-
-            npm install
-            npm run build
-            echo Build completed. Listing build directory:
-            dir build
-        '''
-    }
-}
+            steps {
+                echo "Building React app"
+                bat '''
+                    cd my-app
+                    npm install
+                    npm run build
+                '''
+            }
+        }
 
 
         // stage('Deploy') {
@@ -113,24 +95,50 @@ pipeline {
                     bat """
                         echo Using key: %KEYFILE%
 
-                        REM make sure build exists
-                        if not exist build\\index.html (
+                        REM ensure build exists
+                        if not exist my-app\\build\\index.html (
                             echo Build output missing; aborting.
                             exit /b 1
                         )
 
-                        REM ensure remote release directory exists
-                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p ${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION}"
+                        REM prepare temp deploy directory on remote
+                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
 
-                        REM copy build contents into release version folder
-                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r build/* ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION}/
+                        REM copy new build to remote temp location
+                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
 
-                        REM run remote deploy script (streams local script to remote bash)
-                        type .\\deploy\\deploy.sh | ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} bash -s ${params.ENV} ${params.DEPLOY_VERSION}
+                        REM perform atomic swap on remote: backup current, replace, reload nginx
+                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} bash -s <<'ENDSSH'
+                            set -e
+                            TIMESTAMP=$(date +%Y%m%d%H%M%S)
+                            NGINX_ROOT=/var/www/html
+                            BACKUP_DIR=/home/${env.REMOTE_USER}/backup_$TIMESTAMP
+
+                            echo "Backing up existing content..."
+                            if [ -d "$NGINX_ROOT" ]; then
+                                sudo cp -r "$NGINX_ROOT" "$BACKUP_DIR"
+                            fi
+
+                            echo "Clearing Nginx root..."
+                            sudo rm -rf "$NGINX_ROOT"/*
+
+                            echo "Copying new build into place..."
+                            sudo cp -r /home/${env.REMOTE_USER}/deploy_tmp/* "$NGINX_ROOT"/
+
+                            echo "Setting permissions..."
+                            sudo chown -R www-data:www-data "$NGINX_ROOT"
+
+                            echo "Reloading Nginx..."
+                            sudo systemctl reload nginx
+
+                            echo "Cleanup temp build"
+                            rm -rf /home/${env.REMOTE_USER}/deploy_tmp/*
+                        ENDSSH
                     """
                 }
             }
         }
+
 
 
         stage('Health Check') {
