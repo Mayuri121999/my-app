@@ -62,14 +62,14 @@ pipeline {
                     bat """
                         echo Using key: %KEYFILE%
 
-                        REM tighten key permissions so OpenSSH will accept it
+                        REM tighten key permissions so OpenSSH accepts it
                         for /f "tokens=*" %%u in ('whoami') do set CURUSER=%%u
                         icacls "%KEYFILE%" /inheritance:r
-                        icacls "%KEYFILE%" /grant:r "%CURUSER%:R"
-                        icacls "%KEYFILE%" /grant:r "NT AUTHORITY\\SYSTEM:F"
+                        icacls "%KEYFILE%" /grant:r "%%CURUSER%%:R"
+                        icacls "%KEYFILE%" /grant:r "NT AUTHORITY\\\\SYSTEM:F"
 
                         REM ensure build exists
-                        if not exist build\\index.html (
+                        if not exist my-app\\build\\index.html (
                             echo Build output missing; aborting.
                             exit /b 1
                         )
@@ -78,14 +78,15 @@ pipeline {
                         ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
 
                         REM copy build to remote temp
-                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
+                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
 
-                        REM invoke remote deploy script
-                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "bash /home/ubuntu/deploy_simple.sh"
+                        REM ensure remote deploy script is executable and run it
+                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "chmod +x ${env.REMOTE_DIR}/deploy/deploy.sh && bash ${env.REMOTE_DIR}/deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}"
                     """
                 }
             }
         }
+
 
 
 
