@@ -38,6 +38,7 @@ pipeline {
                 bat '''
                     npm install
                     npm run build
+                    echo build done
                 '''
             }
         }
