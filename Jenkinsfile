@@ -8,15 +8,15 @@ pipeline {
     }
 
     environment {
-        SSH_KEY_ID = 'ec2-ssh-key' // Jenkins SSH credential ID
+        SSH_KEY_ID = 'ec2-ssh-key'               // Jenkins SSH credential ID (SSH Username with private key)
         REMOTE_USER = 'ubuntu'
         REMOTE_HOST = '51.20.181.213'
-        REMOTE_DIR = '/home/ubuntu/my_app'
+        REMOTE_DIR = '/home/ubuntu/my-app'
         PORT = '3000'
     }
 
     tools {
-     nodejs 'node-version' // Match the name you configured
+        nodejs 'node-version' // must match what you configured in Jenkins global tools
     }
 
     stages {
@@ -32,74 +32,63 @@ pipeline {
             }
         }
 
-        // stage('Build') {
-        //     steps {
-        //         echo "In Build Stage"
-        //         bat '''
-        //             cd my-app
-        //             npm install
-        //             npm run build
-        //             echo build done
-        //         '''
-        //     }
-        // }
-
         stage('Build') {
             steps {
                 echo "Building React app"
                 bat '''
+                    cd my-app
                     npm install
                     npm run build
-                    echo build done
                 '''
             }
         }
-
 
         stage('Deploy') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
                     bat """
-                        echo Using key: %KEYFILE%
+                        echo === Deploying to EC2 ===
+                        echo Using original key: %KEYFILE%
 
-                        REM tighten key permissions so OpenSSH accepts it
-                        for /f "tokens=*" %%u in ('whoami') do set CURUSER=%%u
-                        icacls "%KEYFILE%" /inheritance:r
-                        icacls "%KEYFILE%" /grant:r "%%CURUSER%%:R"
-                        icacls "%KEYFILE%" /grant:r "NT AUTHORITY\\\\SYSTEM:F"
+                        REM copy key to a controlled temp file to tighten permissions
+                        set USED_KEY=%TEMP%\\\\jenkins_deploy_key.pem
+                        copy "%KEYFILE%" "%USED_KEY%" /Y >nul
 
-                        REM ensure build exists
+                        REM remove inherited ACLs and give current user read access
+                        icacls "%USED_KEY%" /inheritance:r
+                        icacls "%USED_KEY%" /grant:r "%USERNAME%:R"
+
+                        REM (optional) if Jenkins runs as SYSTEM and needs it:
+                        icacls "%USED_KEY%" /grant:r "NT AUTHORITY\\\\SYSTEM:F"
+
+                        REM verify build exists
                         if not exist my-app\\build\\index.html (
                             echo Build output missing; aborting.
                             exit /b 1
                         )
 
-                        REM prepare remote temp dir
-                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
+                        REM create remote temp folder for staging
+                        ssh -o StrictHostKeyChecking=no -i "%USED_KEY%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
 
-                        REM copy build to remote temp
-                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
+                        REM copy the build content to remote temp
+                        scp -o StrictHostKeyChecking=no -i "%USED_KEY%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
 
-                        REM ensure remote deploy script is executable and run it
-                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "chmod +x ${env.REMOTE_DIR}/deploy/deploy.sh && bash ${env.REMOTE_DIR}/deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}"
+                        REM invoke remote deploy script (make sure it's executable on EC2)
+                        ssh -o StrictHostKeyChecking=no -i "%USED_KEY%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "chmod +x ${env.REMOTE_DIR}/deploy/deploy.sh && bash ${env.REMOTE_DIR}/deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}"
                     """
                 }
             }
         }
 
-
-
-
         stage('Health Check') {
             steps {
-                script {
-                    def status = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${env.REMOTE_HOST}:${env.PORT}", returnStdout: true).trim()
-                    if (status != '200') {
-                        error("Health check failed, rolling back...")
-                    } else {
-                        echo "Health check passed: ${status}"
-                    }
-                }
+                bat """
+                    powershell -Command ^
+                      try { ^
+                        $resp = Invoke-WebRequest -UseBasicParsing http://${env.REMOTE_HOST}:${env.PORT} -TimeoutSec 10; ^
+                        if ($resp.StatusCode -ne 200) { throw 'Health check failed'; } else { Write-Output 'Health check passed'; } ^
+                      } catch { Write-Error 'Health check failed'; exit 1 }
+                """
             }
         }
     }
@@ -107,9 +96,17 @@ pipeline {
     post {
         failure {
             echo "Deployment failed. Rolling back..."
-            // sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
-            //     sh "ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/rollback.sh ${params.ENV}"
-            // }
+            withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
+                bat """
+                    REM prepare key copy again for rollback
+                    set USED_KEY=%TEMP%\\\\jenkins_rollback_key.pem
+                    copy "%KEYFILE%" "%USED_KEY%" /Y >nul
+                    icacls "%USED_KEY%" /inheritance:r
+                    icacls "%USED_KEY%" /grant:r "%USERNAME%:R"
+
+                    ssh -o StrictHostKeyChecking=no -i "%USED_KEY%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "bash ${env.REMOTE_DIR}/rollback.sh ${params.ENV}"
+                """
+            }
         }
     }
 }
