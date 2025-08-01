@@ -43,23 +43,53 @@ pipeline {
             }
         }
 
+        // stage('Deploy') {
+        //     steps {
+        //         withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
+        //             bat """
+        //                 echo === Deploying to EC2 ===
+        //                 echo Using original key: %KEYFILE%
+
+        //                 REM copy key to a controlled temp file to tighten permissions
+        //                 set USED_KEY=%TEMP%\\\\jenkins_deploy_key.pem
+        //                 copy "%KEYFILE%" "%USED_KEY%" /Y >nul
+
+        //                 REM remove inherited ACLs and give current user read access
+        //                 icacls "%USED_KEY%" /inheritance:r
+        //                 icacls "%USED_KEY%" /grant:r "%USERNAME%:R"
+
+        //                 REM (optional) if Jenkins runs as SYSTEM and needs it:
+        //                 icacls "%USED_KEY%" /grant:r "NT AUTHORITY\\\\SYSTEM:F"
+
+        //                 REM verify build exists
+        //                 if not exist my-app\\build\\index.html (
+        //                     echo Build output missing; aborting.
+        //                     exit /b 1
+        //                 )
+
+        //                 REM create remote temp folder for staging
+        //                 ssh -o StrictHostKeyChecking=no -i "%USED_KEY%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
+
+        //                 REM copy the build content to remote temp
+        //                 scp -o StrictHostKeyChecking=no -i "%USED_KEY%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
+
+        //                 REM invoke remote deploy script (make sure it's executable on EC2)
+        //                 ssh -o StrictHostKeyChecking=no -i "%USED_KEY%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "chmod +x ${env.REMOTE_DIR}/deploy/deploy.sh && bash ${env.REMOTE_DIR}/deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}"
+        //             """
+        //         }
+        //     }
+        // }
+
         stage('Deploy') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
                     bat """
                         echo === Deploying to EC2 ===
-                        echo Using original key: %KEYFILE%
+                        echo Using key from Jenkins credentials
 
-                        REM copy key to a controlled temp file to tighten permissions
+                        REM copy key to a temp path so we don't touch the original
                         set USED_KEY=%TEMP%\\\\jenkins_deploy_key.pem
                         copy "%KEYFILE%" "%USED_KEY%" /Y >nul
-
-                        REM remove inherited ACLs and give current user read access
-                        icacls "%USED_KEY%" /inheritance:r
-                        icacls "%USED_KEY%" /grant:r "%USERNAME%:R"
-
-                        REM (optional) if Jenkins runs as SYSTEM and needs it:
-                        icacls "%USED_KEY%" /grant:r "NT AUTHORITY\\\\SYSTEM:F"
 
                         REM verify build exists
                         if not exist my-app\\build\\index.html (
@@ -67,13 +97,13 @@ pipeline {
                             exit /b 1
                         )
 
-                        REM create remote temp folder for staging
+                        REM prepare remote staging directory
                         ssh -o StrictHostKeyChecking=no -i "%USED_KEY%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
 
-                        REM copy the build content to remote temp
+                        REM copy build artifacts
                         scp -o StrictHostKeyChecking=no -i "%USED_KEY%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
 
-                        REM invoke remote deploy script (make sure it's executable on EC2)
+                        REM run remote deploy script
                         ssh -o StrictHostKeyChecking=no -i "%USED_KEY%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "chmod +x ${env.REMOTE_DIR}/deploy/deploy.sh && bash ${env.REMOTE_DIR}/deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}"
                     """
                 }
