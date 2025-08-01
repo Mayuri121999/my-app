@@ -37,46 +37,69 @@ pipeline {
                 echo "In Build Stage"
                 bat '''
                     npm install
-                    "echo After Install"
                     npm run build
-                    "echo After build"
                 '''
             }
         }
 
+        // stage('Deploy') {
+        //     steps {
+        //         // sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
+        //         //     sh """
+        //         //         scp -o StrictHostKeyChecking=no -r ./ ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION} "echo Connected to EC2"
+        //         //         ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}
+        //         //     """
+        //         // }
+
+
+        //         withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
+        //             bat """
+        //                 echo Using key: %KEYFILE%
+
+        //                 REM Remove inheritance for strict permissions
+        //                 icacls "%KEYFILE%" /inheritance:r
+
+        //                 REM Grant Full Control to SYSTEM (adjust if your agent runs as a different user!)
+        //                 icacls "%KEYFILE%" /grant:r "SYSTEM:F"
+
+        //                 REM Verify file exists
+        //                 dir "%KEYFILE%"
+
+        //                 REM Copy the index.html
+        //                 scp -o StrictHostKeyChecking=no -i "%KEYFILE%" index.html ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/
+
+        //                 REM Move to /var/www/html
+        //                 ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "sudo mv ${env.REMOTE_DIR}/build/index.html /var/www/html/index.html"
+        //             """
+                
+        //         }
+        //     }
+        // }
         stage('Deploy') {
             steps {
-                // sshagent (credentials: ["${env.SSH_KEY_ID}"]) {
-                //     sh """
-                //         scp -o StrictHostKeyChecking=no -r ./ ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION} "echo Connected to EC2"
-                //         ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} 'bash -s' < ./deploy/deploy.sh ${params.ENV} ${params.DEPLOY_VERSION}
-                //     """
-                // }
-
-
                 withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
                     bat """
                         echo Using key: %KEYFILE%
 
-                        REM Remove inheritance for strict permissions
-                        icacls "%KEYFILE%" /inheritance:r
+                        REM make sure build exists
+                        if not exist build\\index.html (
+                            echo Build output missing; aborting.
+                            exit /b 1
+                        )
 
-                        REM Grant Full Control to SYSTEM (adjust if your agent runs as a different user!)
-                        icacls "%KEYFILE%" /grant:r "SYSTEM:F"
+                        REM ensure remote release directory exists
+                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p ${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION}"
 
-                        REM Verify file exists
-                        dir "%KEYFILE%"
+                        REM copy build contents into release version folder
+                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r build/* ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/releases/${params.DEPLOY_VERSION}/
 
-                        REM Copy the index.html
-                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" index.html ${env.REMOTE_USER}@${env.REMOTE_HOST}:${env.REMOTE_DIR}/
-
-                        REM Move to /var/www/html
-                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "sudo mv ${env.REMOTE_DIR}/build/ /var/www/html/index.html"
+                        REM run remote deploy script (streams local script to remote bash)
+                        type .\\deploy\\deploy.sh | ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} bash -s ${params.ENV} ${params.DEPLOY_VERSION}
                     """
-                
                 }
             }
         }
+
 
         stage('Health Check') {
             steps {
