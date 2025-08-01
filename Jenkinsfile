@@ -36,6 +36,7 @@ pipeline {
             steps {
                 echo "In Build Stage"
                 bat '''
+                    cd my-app
                     npm install
                     npm run build
                     echo build done
