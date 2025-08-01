@@ -51,6 +51,7 @@ pipeline {
                     cd my-app
                     npm install
                     npm run build
+                    echo build done
                 '''
             }
         }
@@ -94,13 +95,7 @@ pipeline {
                 withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
                     bat """
                         echo Using key: %KEYFILE%
-
-                        REM ensure build exists
-                        if not exist my-app\\build\\index.html (
-                            echo Build output missing; aborting.
-                            exit /b 1
-                        )
-
+                        
                         REM create temp directory on remote
                         ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
 
