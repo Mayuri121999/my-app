@@ -32,17 +32,47 @@ pipeline {
             }
         }
 
+        // stage('Build') {
+        //     steps {
+        //         echo "In Build Stage"
+        //         bat '''
+        //             cd my-app
+        //             npm install
+        //             npm run build
+        //             echo build done
+        //         '''
+        //     }
+        // }
+
         stage('Build') {
-            steps {
-                echo "In Build Stage"
-                bat '''
-                    cd my-app
-                    npm install
-                    npm run build
-                    echo build done
-                '''
-            }
-        }
+    steps {
+        echo "In Build Stage"
+        bat '''
+            REM locate package.json
+            if exist package.json (
+                echo Building from repo root
+            ) else if exist my-app\\package.json (
+                echo Building from my-app subfolder
+                cd my-app
+            ) else (
+                echo package.json not found, aborting.
+                exit /b 1
+            )
+
+            REM ensure node is present
+            node -v || (
+                echo Node.js is missing; aborting.
+                exit /b 1
+            )
+
+            npm install
+            npm run build
+            echo Build completed. Listing build directory:
+            dir build
+        '''
+    }
+}
+
 
         // stage('Deploy') {
         //     steps {
