@@ -48,7 +48,6 @@ pipeline {
             steps {
                 echo "Building React app"
                 bat '''
-                    cd my-app
                     npm install
                     npm run build
                     echo build done
@@ -90,24 +89,25 @@ pipeline {
         //         }
         //     }
         // }
-        stage('Deploy') {
-            steps {
-                withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
-                    bat """
-                        echo Using key: %KEYFILE%
-                        
-                        REM create temp directory on remote
-                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
+        
+        // stage('Deploy') {
+        //     steps {
+        //         withCredentials([sshUserPrivateKey(credentialsId: "${env.SSH_KEY_ID}", keyFileVariable: 'KEYFILE')]) {
+        //             bat """
+        //                 echo Using key: %KEYFILE%
 
-                        REM copy new build to remote temp
-                        scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
+        //                 REM create temp directory on remote
+        //                 ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "mkdir -p /home/${env.REMOTE_USER}/deploy_tmp"
 
-                        REM run the remote deploy script
-                        ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "bash /home/ubuntu/deploy_simple.sh"
-                    """
-                }
-            }
-        }
+        //                 REM copy new build to remote temp
+        //                 scp -o StrictHostKeyChecking=no -i "%KEYFILE%" -r my-app\\build\\* ${env.REMOTE_USER}@${env.REMOTE_HOST}:/home/${env.REMOTE_USER}/deploy_tmp/
+
+        //                 REM run the remote deploy script
+        //                 ssh -o StrictHostKeyChecking=no -i "%KEYFILE%" ${env.REMOTE_USER}@${env.REMOTE_HOST} "bash /home/ubuntu/deploy_simple.sh"
+        //             """
+        //         }
+        //     }
+        // }
 
 
 
