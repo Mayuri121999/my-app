@@ -7,7 +7,7 @@ function App() {
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
         <p>
-          This is finally deployed in vesion 1!😢
+          This is finally deployed in vesion 2 for happy to happy happy!😢
         </p>
         <a
           className="App-link"
